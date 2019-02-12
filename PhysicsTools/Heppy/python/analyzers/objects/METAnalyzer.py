@@ -5,12 +5,26 @@ from PhysicsTools.HeppyCore.utils.deltar import *
 from PhysicsTools.HeppyCore.statistics.counter import Counter, Counters
 from PhysicsTools.Heppy.physicsutils.JetReCalibrator import Type1METCorrector, setFakeRawMETOnOldMiniAODs
 import PhysicsTools.HeppyCore.framework.config as cfg
-
+import pdb
 import copy
 import ROOT
 from math import hypot
 
 from copy import deepcopy
+
+
+#LorentzVector = ROOT.Math.LorentzVector(ROOT.Math.PxPyPzE4D("double"))
+
+def get_final_ptcs(ptc):
+    if ptc.numberOfDaughters() == 0 :
+        return [ptc]
+    else :
+        final_ptcs = []
+        for i_daughter in range(ptc.numberOfDaughters()):
+            l = get_final_ptcs(ptc.daughter(i_daughter))
+            final_ptcs += l
+        return final_ptcs
+
 
 class METAnalyzer( Analyzer ):
     def __init__(self, cfg_ana, cfg_comp, looperName ):
@@ -19,6 +33,7 @@ class METAnalyzer( Analyzer ):
         self.applyJetSmearing = cfg_comp.isMC and cfg_ana.applyJetSmearing
         self.old74XMiniAODs         = cfg_ana.old74XMiniAODs
         self.jetAnalyzerPostFix = getattr(cfg_ana, 'jetAnalyzerPostFix', '')
+        self.runFixMET2017EE = self.cfg_ana.runFixMET2017EE if hasattr(self.cfg_ana, 'runFixMET2017EE') else 0
         if self.recalibrateMET in [ "type1", True ]:
             if self.recalibrateMET == "type1":
                 self.type1METCorrector = Type1METCorrector(self.old74XMiniAODs)
@@ -28,6 +43,11 @@ class METAnalyzer( Analyzer ):
     def declareHandles(self):
         super(METAnalyzer, self).declareHandles()
         self.handles['met'] = AutoHandle( self.cfg_ana.metCollection, 'std::vector<pat::MET>' )
+        self.handles['photons'] = AutoHandle('slimmedPhotons', 'std::vector<pat::Photon>')
+        self.handles['packedPFCandidates'] = AutoHandle('packedPFCandidates','std::vector<pat::PackedCandidate>')
+        self.handles['muons'] = AutoHandle('slimmedMuons',"std::vector<pat::Muon>")
+        self.handles['electrons'] = AutoHandle('slimmedElectrons',"std::vector<pat::Electron>")
+        self.handles['taus'] = AutoHandle('slimmedTaus',"std::vector<pat::Tau>")
 
         if self.cfg_ana.storePuppiExtra:
             self.handles['corX'] = AutoHandle( 'puppiMETEGCor:corX', 'float' )
@@ -38,6 +58,10 @@ class METAnalyzer( Analyzer ):
             self.handles['cmgCand'] = AutoHandle( self.cfg_ana.candidates, self.cfg_ana.candidatesTypes )
             #self.handles['vertices'] =  AutoHandle( "offlineSlimmedPrimaryVertices", 'std::vector<reco::Vertex>', fallbackLabel="offlinePrimaryVertices" )
             self.mchandles['packedGen'] = AutoHandle( 'packedGenParticles', 'std::vector<pat::PackedGenParticle>' )
+
+
+
+
 
     def beginLoop(self, setup):
         super(METAnalyzer,self).beginLoop(setup)
@@ -290,17 +314,30 @@ class METAnalyzer( Analyzer ):
 
 
     def makeMETs(self, event):
-        import ROOT
+        import ROOT       
         if self.cfg_ana.copyMETsByValue:
           self.met = ROOT.pat.MET(self.handles['met'].product()[0])
           if self.cfg_ana.doMetNoPU: self.metNoPU = ROOT.pat.MET(self.handles['nopumet'].product()[0])
         else:
           self.met = self.handles['met'].product()[0]
-          if self.cfg_ana.doMetNoPU: self.metNoPU = self.handles['nopumet'].product()[0]
-
+          if self.cfg_ana.doMetNoPU: self.metNoPU = self.handles['nopumet'].product()[0]         
         if self.recalibrateMET == "type1":
-          type1METCorr = getattr(event, 'type1METCorr'+self.jetAnalyzerPostFix)
-          self.type1METCorrector.correct(self.met, type1METCorr)
+            type1METCorr = getattr(event, 'type1METCorr'+self.jetAnalyzerPostFix)
+            self.type1METCorrector.correct(self.met, type1METCorr)
+            if self.runFixMET2017EE:
+                type1METCorr_fix2017EE = getattr(event, 'type1METCorr_fix2017EE'+self.jetAnalyzerPostFix)
+                self.corr_raw_met = self.runFixEE2017(event)
+                ##correct MET
+                corr_raw_met_px = self.corr_raw_met.px()
+                corr_raw_met_py = self.corr_raw_met.py()                              
+                fixedpx = corr_raw_met_px + type1METCorr_fix2017EE[0]
+                fixedpy = corr_raw_met_py + type1METCorr_fix2017EE[1]                               
+                #new_MET_fix=ROOT.reco.Particle.LorentzVector(fixedpx, fixedpy, 0, hypot(fixedpx, fixedpy))
+                setattr(event, "metFixEE2017"+self.cfg_ana.collectionPostFix,new_MET_fix)
+                #setattr(event, "metFixEE2017"+self.cfg_ana.collectionPostFix, ROOT.reco.Particle.LorentzVector(fixedpx, fixedpy, 0, hypot(fixedpx, fixedpy)))
+                #setattr(event, "metFixEE2017"+self.cfg_ana.collectionPostFix, [fixedpx, fixedpy])
+               
+           
         elif self.recalibrateMET == True:
           deltaMetJEC = getattr(event, 'deltaMetFromJEC'+self.jetAnalyzerPostFix)
           self.applyDeltaMet(self.met, deltaMetJEC)
@@ -379,12 +416,74 @@ class METAnalyzer( Analyzer ):
         if self.cfg_ana.doMetNoPhoton and hasattr(event, 'selectedPhotons'):
             self.makeMETNoPhoton(event)
 
+
+    def runFixEE2017(self, event):
+        '''Run the raw met computation including the cleaning of the noisy ECAL endcap in 2017 data and MC.
+        '''
+        pt_cut = 50.0
+        eta_min = 2.65
+        eta_max = 3.139
+
+        # BadPFCandidateJetsEEnoiseProducer
+        bad_jets = []
+        good_jets = []
+        for x in event.jets:
+            if ( x.correctedJet("Uncorrected").pt() > pt_cut or abs(x.eta()) < eta_min or abs(x.eta()) > eta_max ) :
+                good_jets.append(x)
+            else :
+                bad_jets.append(x)
+
+        # CandViewMerger, pfcandidateClustered
+        if not hasattr(event, 'photons'): # fast construction of photons list
+            event.photons = [p for p in self.handles['photons'].product()]
+        event.muons = [p for p in self.handles['muons'].product()]
+        event.taus = [p for p in self.handles['taus'].product()]
+        event.electrons = [p for p in self.handles['electrons'].product()]
+        pfcandidateClustered_ptcs = []
+        ##check that this is correct
+        for ptc in event.electrons :
+            for assPFcand in ptc.associatedPackedPFCandidates():
+                pfcandidateClustered_ptcs.append(assPFcand.get())
+        for ptc in event.muons + event.taus :
+            for k in range(ptc.numberOfSourceCandidatePtrs()):
+                pfcandidateClustered_ptcs.append(ptc.sourceCandidatePtr(k).get())
+        for ptc in event.photons :
+            for k in range(ptc.numberOfSourceCandidatePtrs()):
+               pfcandidateClustered_ptcs.append(ptc.sourceCandidatePtr(k).get())
+        for ptc in event.jets :
+            pfcandidateClustered_ptcs += get_final_ptcs(ptc)
+
+        # "packedPFCandidates"
+        cands = [c for c in self.handles['packedPFCandidates'].product()]
+        pfcandidateForUnclusteredUnc = [c for c in cands if c not in pfcandidateClustered_ptcs]
+        badUnclustered = []
+        for x in pfcandidateForUnclusteredUnc :
+            if ( abs(x.eta()) > eta_min and abs(x.eta()) < eta_max ) :
+                badUnclustered.append(x)
+
+        superbad = [ptc for ptc in badUnclustered]
+        for jet in bad_jets:
+            superbad += get_final_ptcs(jet)
+
+        pfCandidatesGoodEE2017 = [c for c in cands if c not in superbad]
+        my_met = ROOT.reco.Particle.LorentzVector(0., 0., 0., 0.)
+
+        # calc raw met no fix ee 2017
+        for ptc in pfCandidatesGoodEE2017:         
+            my_met -= ptc.p4()
+        px = my_met.px()
+
+        return my_met
+
+
+
     def process(self, event):
         self.readCollections( event.input)
         self.counters.counter('events').inc('all events')
 
         self.makeMETs(event)
 
+        #print self.cfg_ana
         if self.cfg_ana.doTkMet: 
             self.makeTkMETs(event);
 
@@ -395,6 +494,10 @@ class METAnalyzer( Analyzer ):
             self.makeGenTkMet(event)
 
         return True
+
+
+
+
 
 
 setattr(METAnalyzer,"defaultConfig", cfg.Analyzer(
@@ -425,5 +528,8 @@ setattr(METAnalyzer,"defaultConfig", cfg.Analyzer(
     candidatesTypes='std::vector<pat::PackedCandidate>',
     dzMax = 0.1,
     collectionPostFix = "",
+    ## Add this for the correction
+    ##metCollection = "pfmet",
+
     )
 )

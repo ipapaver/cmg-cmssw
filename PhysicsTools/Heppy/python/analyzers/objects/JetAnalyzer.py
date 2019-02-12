@@ -78,6 +78,7 @@ class JetAnalyzer( Analyzer ):
         dataGT = cfg_ana.dataGT if hasattr(cfg_ana,'dataGT') else [[-1,"GR_70_V2_AN1"]]
         self.shiftJEC = self.cfg_ana.shiftJEC if hasattr(self.cfg_ana, 'shiftJEC') else 0
         self.recalibrateJets = self.cfg_ana.recalibrateJets
+        self.runFixMET2017EE = self.cfg_ana.runFixMET2017EE if hasattr(self.cfg_ana, 'runFixMET2017EE') else 0
         self.jetPtOrUpOrDnSelection = getattr(self.cfg_ana,'jetPtOrUpOrDnSelection',False)
         self.addJECShifts = getattr(self.cfg_ana, 'addJECShifts',False) or self.jetPtOrUpOrDnSelection
         if   self.recalibrateJets == "MC"  : self.recalibrateJets =     self.cfg_comp.isMC
@@ -96,7 +97,8 @@ class JetAnalyzer( Analyzer ):
           if type(GTs) == str: GTs = [ (-1, GTs) ]
           # Now take care of the optional arguments
           kwargs = { 'calculateSeparateCorrections':calculateSeparateCorrections,
-                     'calculateType1METCorrection' :calculateType1METCorrection, }
+                     'calculateType1METCorrection' :calculateType1METCorrection,
+                    'fixMET2017EE' : self.runFixMET2017EE}
           if kwargs['calculateType1METCorrection']: kwargs['type1METParams'] = cfg_ana.type1METParams
           # instantiate the jet re-calibrator
           self.jetReCalibrators=[]
@@ -162,6 +164,7 @@ class JetAnalyzer( Analyzer ):
 
         self.deltaMetFromJEC = [0.,0.]
         self.type1METCorr    = [0.,0.,0.]
+        self.type1METCorr_fix2017EE = [0,0,0]
 #        print "before. rho",self.rho,self.cfg_ana.collectionPostFix,'allJets len ',len(allJets),'pt', [j.pt() for j in allJets]
         if self.doJEC:
             if not self.recalibrateJets:  # check point that things won't change
@@ -371,6 +374,7 @@ class JetAnalyzer( Analyzer ):
         setattr(event,"rho"                    +self.cfg_ana.collectionPostFix, self.rho                    ) 
         setattr(event,"deltaMetFromJEC"        +self.cfg_ana.collectionPostFix, self.deltaMetFromJEC        ) 
         setattr(event,"type1METCorr"           +self.cfg_ana.collectionPostFix, self.type1METCorr           ) 
+        setattr(event, "type1METCorr_fix2017EE"+self.cfg_ana.collectionPostFix, self.type1METCorr_fix2017EE )
         setattr(event,"allJetsUsedForMET"      +self.cfg_ana.collectionPostFix, self.allJetsUsedForMET      ) 
         setattr(event,"jets"                   +self.cfg_ana.collectionPostFix, self.jets                   ) 
         setattr(event,"jetsFailId"             +self.cfg_ana.collectionPostFix, self.jetsFailId             ) 
