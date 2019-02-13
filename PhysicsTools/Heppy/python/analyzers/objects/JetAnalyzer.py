@@ -164,6 +164,7 @@ class JetAnalyzer( Analyzer ):
 
         self.deltaMetFromJEC = [0.,0.]
         self.type1METCorr    = [0.,0.,0.]
+        self.type1METCorr_fix2017EE = [0,0,0]
 #        print "before. rho",self.rho,self.cfg_ana.collectionPostFix,'allJets len ',len(allJets),'pt', [j.pt() for j in allJets]
         if self.doJEC:
             if not self.recalibrateJets:  # check point that things won't change
@@ -373,6 +374,7 @@ class JetAnalyzer( Analyzer ):
         setattr(event,"rho"                    +self.cfg_ana.collectionPostFix, self.rho                    ) 
         setattr(event,"deltaMetFromJEC"        +self.cfg_ana.collectionPostFix, self.deltaMetFromJEC        ) 
         setattr(event,"type1METCorr"           +self.cfg_ana.collectionPostFix, self.type1METCorr           ) 
+        setattr(event, "type1METCorr_fix2017EE"+self.cfg_ana.collectionPostFix, self.type1METCorr_fix2017EE )
         setattr(event,"allJetsUsedForMET"      +self.cfg_ana.collectionPostFix, self.allJetsUsedForMET      ) 
         setattr(event,"jets"                   +self.cfg_ana.collectionPostFix, self.jets                   ) 
         setattr(event,"jetsFailId"             +self.cfg_ana.collectionPostFix, self.jetsFailId             ) 

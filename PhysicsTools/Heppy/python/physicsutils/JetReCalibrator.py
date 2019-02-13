@@ -186,7 +186,7 @@ class JetReCalibrator:
             jets.remove(bj)
 
 class Type1METCorrector:
-    def __init__(self, old74XMiniAODs, runFixMET2017EE):
+    def __init__(self, old74XMiniAODs):
         """Object to apply type1 corrections computed by the JetReCalibrator to the MET.
            old74XMiniAODs should be True if using inputs produced with CMSSW_7_4_11 or earlier."""
         self.oldMC = old74XMiniAODs

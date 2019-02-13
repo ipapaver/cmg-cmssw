@@ -328,10 +328,14 @@ class METAnalyzer( Analyzer ):
                 type1METCorr_fix2017EE = getattr(event, 'type1METCorr_fix2017EE'+self.jetAnalyzerPostFix)
                 self.corr_raw_met = self.runFixEE2017(event)
                 ##correct MET
-                fixedpx = self.corr_raw_met.px + type1METCorr_fix2017EE[0]
-                fixedpy = self.corr_raw_met.py + type1METCorr_fix2017EE[1]
-                setattr(event, "metFixEE2017"+self.cfg_ana.collectionPostFix, [fixedpx, fixedpy])
-        
+                corr_raw_met_px = self.corr_raw_met.px()
+                corr_raw_met_py = self.corr_raw_met.py()                              
+                fixedpx = corr_raw_met_px + type1METCorr_fix2017EE[0]
+                fixedpy = corr_raw_met_py + type1METCorr_fix2017EE[1]                               
+                new_MET_fix=ROOT.reco.Particle.LorentzVector(fixedpx, fixedpy, 0, hypot(fixedpx, fixedpy))
+                setattr(event, "metFixEE2017"+self.cfg_ana.collectionPostFix,new_MET_fix)
+                #setattr(event, "metFixEE2017"+self.cfg_ana.collectionPostFix, ROOT.reco.Particle.LorentzVector(fixedpx, fixedpy, 0, hypot(fixedpx, fixedpy)))
+                #setattr(event, "metFixEE2017"+self.cfg_ana.collectionPostFix, [fixedpx, fixedpy])
                
            
         elif self.recalibrateMET == True:
@@ -529,63 +533,3 @@ setattr(METAnalyzer,"defaultConfig", cfg.Analyzer(
 
     )
 )
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
